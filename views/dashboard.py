@@ -178,32 +178,51 @@ def render():
                     with tab_daily:
                         fig_daily = px.line(
                             df_current, x='Date', y='Distance (km)', markers=True,
-                            color_discrete_sequence=[v_color], height=300
+                            color_discrete_sequence=[v_color], height=350
                         )
                         fig_daily.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig_daily, use_container_width=True)
 
                     with tab_monthly:
                         df_monthly = df_current.copy()
-                        df_monthly['Month'] = df_monthly['Date'].dt.strftime('%Y-%m')  # 按月聚合
+                        df_monthly['Month'] = df_monthly['Date'].dt.strftime('%Y-%m')
                         monthly_sum = df_monthly.groupby('Month')['Distance (km)'].sum().reset_index()
                         fig_monthly = px.bar(
                             monthly_sum, x='Month', y='Distance (km)', text_auto='.1f',
-                            color_discrete_sequence=[v_color], height=300
+                            color_discrete_sequence=[v_color], height=350
                         )
                         fig_monthly.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig_monthly, use_container_width=True)
 
                 else:
-                    # ===== 【多车模式】：维持原有的综合趋势堆叠图 =====
-                    st.markdown("##### 📈 每日出勤趋势 (Time-Series Trend)")
-                    trend_df = df_current.groupby(['Date', 'Company_Type'])['Distance (km)'].sum().reset_index()
-                    fig_trend = px.area(
-                        trend_df, x='Date', y='Distance (km)', color='Company_Type',
-                        color_discrete_map=COLOR_MAP, height=350
-                    )
-                    fig_trend.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
-                    st.plotly_chart(fig_trend, use_container_width=True)
+                    # ===== 【多车模式】：综合趋势与利用率 =====
+                    tab_trend, tab_util = st.tabs(["📈 里程出勤趋势", "🔥 车辆利用率 (空车率)"])
+
+                    with tab_trend:
+                        trend_df = df_current.groupby(['Date', 'Company_Type'])['Distance (km)'].sum().reset_index()
+                        fig_trend = px.area(
+                            trend_df, x='Date', y='Distance (km)', color='Company_Type',
+                            color_discrete_map=COLOR_MAP, height=350
+                        )
+                        fig_trend.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
+                        st.plotly_chart(fig_trend, use_container_width=True)
+
+                    with tab_util:
+                        # 计算每天的出勤车辆和闲置车辆 (以当前筛选条件下的总车数 current_cars 为基数)
+                        daily_usage = df_current.groupby('Date')['Vehicle'].nunique().reset_index(name='出勤车辆')
+                        daily_usage['闲置空车'] = current_cars - daily_usage['出勤车辆']
+                        daily_usage['出勤率(%)'] = (daily_usage['出勤车辆'] / current_cars * 100).round(1)
+
+                        fig_util = px.bar(
+                            daily_usage, x='Date', y=['出勤车辆', '闲置空车'],
+                            hover_data=['出勤率(%)'],
+                            labels={'value': '车辆数量 (辆)', 'variable': '状态'},
+                            color_discrete_map={'出勤车辆': '#3b82f6', '闲置空车': '#cbd5e1'},
+                            height=350
+                        )
+                        fig_util.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)',
+                                               legend_title_text='')
+                        st.plotly_chart(fig_util, use_container_width=True)
 
         with row1_col2:
             with st.container(border=True):
@@ -236,10 +255,10 @@ def render():
                     with c_title:
                         st.markdown("##### 📊 车辆累计里程排行")
                     with c_slider:
-                        # 只有 >= 2 辆车时，min_value 设为 2
+                        # 【核心修复】：无论 >=2 辆车，最小值都设为 1，防止极端报错
                         top_n = st.slider(
                             "拖动调整显示数量",
-                            min_value=2,
+                            min_value=1,
                             max_value=total_cars_in_summary,
                             value=min(10, total_cars_in_summary),
                             step=1
