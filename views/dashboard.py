@@ -129,16 +129,42 @@ def render(business_line):
                 ["📈 车队里程出勤趋势", "🔥 车辆出勤率 (闲置分析)", "🏆 车辆累计里程排行"])
 
             with tab_trend:
-                # 去除了业务线的区分，直接按天汇总里程，使用统一主题色
+                # 重新按天汇总总里程
                 trend_df = df_current.groupby('Date')['Distance (km)'].sum().reset_index()
-                fig_trend = px.area(
+
+                # 1. 升级为清爽的柱状图，直接把数字“贴”在柱子上
+                fig_trend = px.bar(
                     trend_df, x='Date', y='Distance (km)',
-                    color_discrete_sequence=[primary_color], height=450
+                    color_discrete_sequence=[primary_color],
+                    text_auto='.0f',  # 直接显示具体公里数（去小数取整，避免画面杂乱）
+                    height=350
                 )
+                # 优化数字显示位置和网格线
+                fig_trend.update_traces(textposition="outside", cliponaxis=False)
                 fig_trend.update_layout(
-                    margin=dict(t=20, b=20, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)'
+                    margin=dict(t=30, b=10, l=10, r=10),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    yaxis=dict(title="当日总里程 (km)", showgrid=True, gridcolor='#f1f5f9'),
+                    xaxis=dict(title="")
                 )
                 st.plotly_chart(fig_trend, use_container_width=True)
+
+                # 2. 增加你需要的“直观数据表格”
+                st.markdown("###### 📅 每日里程汇总表 (按日期倒序)")
+
+                # 格式化表格数据，方便阅读
+                table_df = trend_df.sort_values('Date', ascending=False).copy()
+                table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
+
+                st.dataframe(
+                    table_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Date": st.column_config.TextColumn("运营日期"),
+                        "Distance (km)": st.column_config.NumberColumn("当日总行驶里程 (km)", format="%.1f")
+                    }
+                )
 
             with tab_util:
                 # 最新的高级堆叠面积图
