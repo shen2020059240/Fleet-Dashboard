@@ -1,0 +1,14 @@
+# config.toml
+[fleet]
+# HC 公司的朋友车车牌名单
+hc_friends = [
+    "BCH 7710ZM",
+    "BCH 7711ZM",
+    "BCH 7713ZM"
+]
+
+[companies]
+# 统一显示的公司名称标签
+sk_name = "SK (公司自有)"
+tm_name = "TM (公司自有)"
+hc_name = "HC (朋友车)"
