@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 from utils.db import load_from_db, load_logistic_from_db
 
+
 def render():
     st.title("🚚 TFM Flatbed 订单物流实时监控 (Function 2)")
     st.markdown("💡 智能引擎已替代 Excel 嵌套公式，直接关联云端核心数据库，自动执行实时里程累加与状态匹配。")
@@ -20,27 +21,31 @@ def render():
         return
 
     with st.spinner("正在执行云端智能匹配与里程计算..."):
-        # 1. 提取动态列名（锁定第1列为车牌，第2到8列为物流节点）
-        truck_col = df_log.columns[0]
-        date_cols = df_log.columns[1:8]
+        # 1. 🌟 智能提取列名（不再写死固定位置，完美兼容你新增的 Reference No）
+        # 只要列名里包含 'DATE'，系统就自动把它认作物流节点
+        date_cols = [col for col in df_log.columns if 'DATE' in col.upper()]
+
+        # 剩下的列（比如车牌号、订单号、客户等），系统全部打包保留
+        other_cols = [col for col in df_log.columns if col not in date_cols and col not in ['行驶距离', '距离/状态']]
+
+        # 永远将第一列视作车牌号用于匹配
+        truck_col = other_cols[0]
 
         # 2. 清理主数据库的车牌格式（去除空格，强制大写，防止匹配失败）
         df_fleet['Vehicle_Clean'] = df_fleet['Vehicle'].astype(str).str.strip().str.upper()
 
-        # 3. 核心计算逻辑 (完全替代复杂的 Excel 公式)
+        # 3. 核心计算逻辑
         def process_logistic_row(row):
             truck = str(row[truck_col]).strip().upper()
             dates = pd.to_datetime(row[date_cols], errors='coerce')
             valid_dates = dates.dropna()
 
-            # 对应 Excel 的 IF(COUNT(AH87:AN87)=0, "暂未开始运输", ...)
             if len(valid_dates) == 0:
                 return pd.Series(["暂未开始运输", "已下单但暂未开始运输"])
 
             start_date = valid_dates.min()
             end_date = valid_dates.max()
 
-            # 对应 Excel 的 CHOOSE(MATCH(1,0/(AH87:AM87<>"")), ...)
             status = ""
             if pd.notna(dates.iloc[6]):
                 status = "已完成订单"
@@ -57,12 +62,10 @@ def render():
             elif pd.notna(dates.iloc[0]):
                 status = "到装货地点"
 
-            # 对应 Excel 的 COUNTIF(..., "车牌号不相符")
             truck_mask = df_fleet['Vehicle_Clean'] == truck
             if not truck_mask.any():
                 return pd.Series(["车牌号不相符", "车牌号不相符"])
 
-            # 对应 Excel 的 SUMIFS (按车牌号、大于等于开始日期、小于等于结束日期汇总)
             mask = truck_mask & (df_fleet['Date'] >= start_date) & (df_fleet['Date'] <= end_date)
             dist = df_fleet.loc[mask, 'Distance (km)'].sum()
 
@@ -79,12 +82,12 @@ def render():
         # ==========================================
         st.success(f"✅ 计算完成！共处理 {len(df_log)} 条在途订单。")
 
-        # 将日期格式化为易读的字符串，去除多余的时分秒
+        # 将日期格式化为易读的字符串
         for col in date_cols:
             df_log[col] = df_log[col].dt.strftime('%Y-%m-%d').fillna('')
 
-        # 调整表头显示顺序，将计算结果紧挨着车牌号展示
-        final_cols = [truck_col, '行驶距离', '距离/状态'] + list(date_cols)
+        # 🌟 动态重组表格展示顺序：所有其他列(含Reference No) + 计算结果 + 日期节点
+        final_cols = other_cols + ['行驶距离', '距离/状态'] + date_cols
         df_display = df_log[final_cols]
 
         st.dataframe(
