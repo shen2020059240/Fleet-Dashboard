@@ -108,11 +108,23 @@ def render(business_line):
                 df_monthly = df_current.copy()
                 df_monthly['Month'] = df_monthly['Date'].dt.strftime('%Y-%m')
                 monthly_sum = df_monthly.groupby('Month')['Distance (km)'].sum().reset_index()
+
                 fig_monthly = px.bar(
                     monthly_sum, x='Month', y='Distance (km)', text_auto='.1f',
                     color_discrete_sequence=[primary_color], height=400
                 )
-                fig_monthly.update_layout(margin=dict(t=20, b=20, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
+
+                # 【核心修复1】：强制将X轴设为“离散的类别”，去掉底层连续的周/日刻度
+                fig_monthly.update_xaxes(type='category')
+
+                # 【核心修复2】：限制柱子的最大宽度（比如 0.3），防止只有 1-2 个月时柱子胖得像一面墙
+                fig_monthly.update_traces(width=0.3)
+
+                fig_monthly.update_layout(
+                    margin=dict(t=20, b=20, l=10, r=10),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    yaxis=dict(title="月度总里程 (km)")  # 顺手补上Y轴标题
+                )
                 st.plotly_chart(fig_monthly, use_container_width=True)
 
             with tab_daily:
