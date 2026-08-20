@@ -146,19 +146,36 @@ def render():
                 st.plotly_chart(fig_trend, use_container_width=True)
 
             with tab_util:
-                # 视觉降噪：用平滑折线图展示出勤率
-                daily_usage = df_current.groupby('Date')['Vehicle'].nunique().reset_index(name='活跃车辆')
-                daily_usage['出勤率(%)'] = (daily_usage['活跃车辆'] / current_cars * 100).round(1)
+                # 计算每天的出勤、闲置以及总车数
+                daily_usage = df_current.groupby('Date')['Vehicle'].nunique().reset_index(name='出勤车辆')
+                daily_usage['总车辆数'] = current_cars
+                daily_usage['闲置空车'] = current_cars - daily_usage['出勤车辆']
+                daily_usage['出勤率'] = (daily_usage['出勤车辆'] / current_cars * 100).round(1).astype(str) + '%'
 
-                fig_util = px.line(
-                    daily_usage, x='Date', y='出勤率(%)',
-                    hover_data=['活跃车辆'], markers=False, height=450,
-                    color_discrete_sequence=['#10b981']  # 翠绿色代表健康度
+                # 转换数据格式以适配堆叠面积图
+                util_melted = daily_usage.melt(
+                    id_vars=['Date', '出勤率', '总车辆数'],
+                    value_vars=['出勤车辆', '闲置空车'],
+                    var_name='状态',
+                    value_name='车辆数'
                 )
-                fig_util.update_traces(fill='tozeroy', fillcolor='rgba(16, 185, 129, 0.2)')
+
+                # 渲染堆叠面积图 (绿色代表健康出勤，浅灰代表闲置浪费)
+                fig_util = px.area(
+                    util_melted, x='Date', y='车辆数', color='状态',
+                    color_discrete_map={'出勤车辆': '#10b981', '闲置空车': '#e2e8f0'},
+                    category_orders={'状态': ['出勤车辆', '闲置空车']},  # 确保出勤在底层，闲置在顶层
+                    hover_data={'出勤率': True, '总车辆数': True},
+                    height=450
+                )
+
+                # 优化视觉交互
                 fig_util.update_layout(
-                    margin=dict(t=20, b=20, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis=dict(range=[0, 105], title="系统活跃率 (%)")
+                    margin=dict(t=20, b=20, l=10, r=10),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    yaxis=dict(title="车辆数 (辆)"),
+                    legend_title_text='',
+                    hovermode='x unified'  # 鼠标悬浮时出现贯穿整条垂直线的综合信息提示框
                 )
                 st.plotly_chart(fig_util, use_container_width=True)
 
