@@ -1,6 +1,7 @@
 # views/logistic.py
 import streamlit as st
 import pandas as pd
+import re
 from utils.db import load_from_db, load_logistic_from_db
 
 
@@ -21,22 +22,27 @@ def render():
         return
 
     with st.spinner("正在执行云端智能匹配与里程计算..."):
-        # 1. 🌟 智能提取列名（不再写死固定位置，完美兼容你新增的 Reference No）
-        # 只要列名里包含 'DATE'，系统就自动把它认作物流节点
+        # 1. 🌟 智能提取列名 (识别时间节点与其他信息)
         date_cols = [col for col in df_log.columns if 'DATE' in col.upper()]
-
-        # 剩下的列（比如车牌号、订单号、客户等），系统全部打包保留
         other_cols = [col for col in df_log.columns if col not in date_cols and col not in ['行驶距离', '距离/状态']]
 
-        # 永远将第一列视作车牌号用于匹配
-        truck_col = other_cols[0]
+        # 🌟 智能定位车牌列 (防止 Reference No 排在第一列导致错位)
+        truck_col = other_cols[0]  # 默认备用项
+        for col in other_cols:
+            if any(keyword in col.upper() for keyword in ['HORSE', 'TRUCK', 'VEHICLE', '车牌']):
+                truck_col = col
+                break
 
-        # 2. 清理主数据库的车牌格式（去除空格，强制大写，防止匹配失败）
-        df_fleet['Vehicle_Clean'] = df_fleet['Vehicle'].astype(str).str.strip().str.upper()
+        # 2. 🌟 终极模糊匹配：只提取数字进行对比！
+        # 将主数据库里的车牌号所有非数字字符(\D+)全部删掉，只保留数字（例如 "ADF 3230ZM" -> "3230"）
+        df_fleet['Vehicle_Digits'] = df_fleet['Vehicle'].astype(str).str.replace(r'\D+', '', regex=True)
 
         # 3. 核心计算逻辑
         def process_logistic_row(row):
-            truck = str(row[truck_col]).strip().upper()
+            # 获取当前行的车牌，并用正则提纯出纯数字
+            truck_raw = str(row[truck_col])
+            truck_digits = re.sub(r'\D+', '', truck_raw)
+
             dates = pd.to_datetime(row[date_cols], errors='coerce')
             valid_dates = dates.dropna()
 
@@ -62,7 +68,12 @@ def render():
             elif pd.notna(dates.iloc[0]):
                 status = "到装货地点"
 
-            truck_mask = df_fleet['Vehicle_Clean'] == truck
+            # 🌟 使用纯数字进行终极对比
+            if not truck_digits:
+                return pd.Series(["车牌无法识别数字", "车牌无法识别数字"])
+
+            truck_mask = df_fleet['Vehicle_Digits'] == truck_digits
+
             if not truck_mask.any():
                 return pd.Series(["车牌号不相符", "车牌号不相符"])
 
@@ -86,7 +97,7 @@ def render():
         for col in date_cols:
             df_log[col] = df_log[col].dt.strftime('%Y-%m-%d').fillna('')
 
-        # 🌟 动态重组表格展示顺序：所有其他列(含Reference No) + 计算结果 + 日期节点
+        # 动态重组表格展示顺序：所有其他列(含Reference No, 车牌) + 计算结果 + 日期节点
         final_cols = other_cols + ['行驶距离', '距离/状态'] + date_cols
         df_display = df_log[final_cols]
 
