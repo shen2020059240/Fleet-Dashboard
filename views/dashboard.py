@@ -127,7 +127,6 @@ def render(business_line):
             with tab_daily:
                 st.markdown(f"###### 📅 {single_v_name} 出勤账单 (按日期倒序)")
 
-                # 仅筛选出大于0的有效出勤记录，并按日期从新到旧排列
                 table_df = df_current[['Date', 'Distance (km)']].sort_values('Date', ascending=False).copy()
                 table_df = table_df[table_df['Distance (km)'] > 0]
                 table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
@@ -151,16 +150,13 @@ def render(business_line):
             with tab_trend:
                 st.markdown("###### 📅 每日车队运营账单 (按日期倒序)")
 
-                # 核心数据聚合
+                # 核心数据聚合：移除平均里程，仅保留车辆数、总里程、最高单车里程
                 agg_funcs = {
                     'Vehicle': 'nunique',
                     'Distance (km)': ['sum', 'max']
                 }
                 daily_summary = df_current.groupby('Date').agg(agg_funcs).reset_index()
                 daily_summary.columns = ['Date', 'Active_Vehicles', 'Total_Distance', 'Max_Distance']
-
-                # 衍生计算
-                daily_summary['Avg_Distance'] = daily_summary['Total_Distance'] / daily_summary['Active_Vehicles']
 
                 # 格式化日期并倒序排列
                 daily_summary['Date'] = daily_summary['Date'].dt.strftime('%Y-%m-%d')
@@ -180,11 +176,6 @@ def render(business_line):
                         "Total_Distance": st.column_config.NumberColumn(
                             "总行驶里程 (km)",
                             format="%.1f"
-                        ),
-                        "Avg_Distance": st.column_config.NumberColumn(
-                            "单车平均里程 (km)",
-                            format="%.1f",
-                            help="总里程 ÷ 出勤车辆"
                         ),
                         "Max_Distance": st.column_config.NumberColumn(
                             "最高单车里程 (km)",
