@@ -128,11 +128,23 @@ def render(business_line):
                 st.plotly_chart(fig_monthly, use_container_width=True)
 
             with tab_daily:
-                fig_daily = px.area(
-                    df_current, x='Date', y='Distance (km)', markers=True,
-                    color_discrete_sequence=[primary_color], height=400
+                # 升级为柱状图：有出勤才有柱子，没出勤直接留白，最真实反映车辆动态
+                fig_daily = px.bar(
+                    df_current, x='Date', y='Distance (km)',
+                    color_discrete_sequence=[primary_color],
+                    text_auto='.0f',  # 直接在柱子顶部显示公里数
+                    height=400
                 )
-                fig_daily.update_layout(margin=dict(t=20, b=20, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
+
+                # 优化数字显示位置，避免被裁切
+                fig_daily.update_traces(textposition="outside", cliponaxis=False)
+
+                fig_daily.update_layout(
+                    margin=dict(t=30, b=20, l=10, r=10),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    yaxis=dict(title="当日行驶里程 (km)", showgrid=True, gridcolor='#f1f5f9'),
+                    xaxis=dict(title="")  # 隐藏底部的 Date 字样，让画面更干净
+                )
                 st.plotly_chart(fig_daily, use_container_width=True)
 
         else:
