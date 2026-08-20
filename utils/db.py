@@ -118,7 +118,6 @@ def save_logistic_to_db(df):
         traceback.print_exc()
         return False, f"数据库写入异常: {str(e)}"
 
-
 @st.cache_data(ttl=300)
 def load_logistic_from_db():
     """读取物流节点全量数据，并提供缓存"""
