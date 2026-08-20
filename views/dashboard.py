@@ -25,7 +25,7 @@ def render():
     global_max_date = df['Date'].max().date()
 
     # ==========================================
-    # 🔍 筛选器区域 (修复越界 + 增加车型筛选)
+    # 🔍 筛选器区域
     # ==========================================
     with st.container(border=True):
         st.markdown("##### 🔍 基础筛选")
@@ -52,7 +52,6 @@ def render():
             elif date_preset == "今年至今":
                 start_date = end_date.replace(month=1, day=1)
 
-            # 【关键修复】：如果快捷时间算出来比数据库最早的数据还早，强制设为数据库最早数据
             if start_date < global_min_date:
                 start_date = global_min_date
 
@@ -66,7 +65,7 @@ def render():
                 disabled=(date_preset != "自定义范围")
             )
 
-        # --- 车型筛选 (新增) ---
+        # --- 车型筛选 ---
         all_vehicle_types = sorted(df['Vehicle_Type'].unique().tolist())
         with c3:
             selected_v_types = st.multiselect(
@@ -76,7 +75,6 @@ def render():
             )
 
         # --- 公司归属 ---
-        # 级联逻辑：选了车型后，公司归属只显示拥有该车型的公司
         active_v_types = selected_v_types if selected_v_types else all_vehicle_types
         available_companies = sorted(df[df['Vehicle_Type'].isin(active_v_types)]['Company_Type'].unique().tolist())
 
@@ -91,7 +89,6 @@ def render():
         with st.expander("⚙️ 高级筛选 (指定特定车辆)"):
             active_companies = selected_companies if selected_companies else available_companies
 
-            # 终极级联：必须同时符合车型和公司的车，才会出现在列表里
             available_vehicles = sorted(
                 df[
                     (df['Vehicle_Type'].isin(active_v_types)) &
@@ -169,14 +166,44 @@ def render():
 
         with row1_col1:
             with st.container(border=True):
-                st.markdown("##### 📈 每日出勤趋势 (Time-Series Trend)")
-                trend_df = df_current.groupby(['Date', 'Company_Type'])['Distance (km)'].sum().reset_index()
-                fig_trend = px.area(
-                    trend_df, x='Date', y='Distance (km)', color='Company_Type',
-                    color_discrete_map=COLOR_MAP, height=350
-                )
-                fig_trend.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig_trend, use_container_width=True)
+                if current_cars == 1:
+                    # ===== 【单车模式】：展示专属日/月里程分析 =====
+                    single_v_name = df_current['Vehicle'].iloc[0]
+                    company = df_current['Company_Type'].iloc[0]
+                    v_color = COLOR_MAP.get(company, '#3b82f6')
+
+                    st.markdown(f"##### 📈 【{single_v_name}】专属里程分析")
+                    tab_daily, tab_monthly = st.tabs(["📅 每日行驶明细", "🗓️ 各月累计汇总"])
+
+                    with tab_daily:
+                        fig_daily = px.line(
+                            df_current, x='Date', y='Distance (km)', markers=True,
+                            color_discrete_sequence=[v_color], height=300
+                        )
+                        fig_daily.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
+                        st.plotly_chart(fig_daily, use_container_width=True)
+
+                    with tab_monthly:
+                        df_monthly = df_current.copy()
+                        df_monthly['Month'] = df_monthly['Date'].dt.strftime('%Y-%m')  # 按月聚合
+                        monthly_sum = df_monthly.groupby('Month')['Distance (km)'].sum().reset_index()
+                        fig_monthly = px.bar(
+                            monthly_sum, x='Month', y='Distance (km)', text_auto='.1f',
+                            color_discrete_sequence=[v_color], height=300
+                        )
+                        fig_monthly.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
+                        st.plotly_chart(fig_monthly, use_container_width=True)
+
+                else:
+                    # ===== 【多车模式】：维持原有的综合趋势堆叠图 =====
+                    st.markdown("##### 📈 每日出勤趋势 (Time-Series Trend)")
+                    trend_df = df_current.groupby(['Date', 'Company_Type'])['Distance (km)'].sum().reset_index()
+                    fig_trend = px.area(
+                        trend_df, x='Date', y='Distance (km)', color='Company_Type',
+                        color_discrete_map=COLOR_MAP, height=350
+                    )
+                    fig_trend.update_layout(margin=dict(t=10, b=10, l=10, r=10), plot_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_trend, use_container_width=True)
 
         with row1_col2:
             with st.container(border=True):
@@ -192,43 +219,45 @@ def render():
 
         row2_col1, row2_col2 = st.columns([2.5, 1])
 
-        # 汇总车辆排行数据（按总里程降序排列）
+        # 汇总车辆排行数据
         vehicle_summary = df_current.groupby(['Company_Type', 'Vehicle'])['Distance (km)'].sum().reset_index()
         vehicle_summary = vehicle_summary.sort_values('Distance (km)', ascending=False)
         total_cars_in_summary = len(vehicle_summary)
 
         with row2_col1:
-            with st.container(border=True):
-                # 将标题和调节滑块放在同一行，节省空间
-                c_title, c_slider = st.columns([1, 1])
-                with c_title:
+            if total_cars_in_summary == 1:
+                # 只有 1 辆车时，隐藏排行榜，防止滑块报错
+                with st.container(border=True):
                     st.markdown("##### 📊 车辆累计里程排行")
-                with c_slider:
-                    # 动态 Top N 控制器：默认 10 辆，最大允许拉到当前筛选出的全部车辆数
-                    top_n = st.slider(
-                        "拖动调整显示数量",
-                        min_value=1,
-                        max_value=total_cars_in_summary if total_cars_in_summary > 0 else 1,
-                        value=min(10, total_cars_in_summary),  # 默认10辆，如果总数不足10辆则显示总数
-                        step=1
+                    st.info("📌 当前处于单车分析模式，已自动折叠车队排行。")
+            else:
+                with st.container(border=True):
+                    c_title, c_slider = st.columns([1, 1])
+                    with c_title:
+                        st.markdown("##### 📊 车辆累计里程排行")
+                    with c_slider:
+                        # 只有 >= 2 辆车时，min_value 设为 2
+                        top_n = st.slider(
+                            "拖动调整显示数量",
+                            min_value=2,
+                            max_value=total_cars_in_summary,
+                            value=min(10, total_cars_in_summary),
+                            step=1
+                        )
+
+                    top_vehicles_df = vehicle_summary.head(top_n)
+                    fig_bar = px.bar(
+                        top_vehicles_df.sort_values('Distance (km)', ascending=True),
+                        x='Distance (km)', y='Vehicle', color='Company_Type',
+                        color_discrete_map=COLOR_MAP, orientation='h', text_auto='.1f',
+                        height=max(300, len(top_vehicles_df) * 30)
                     )
-
-                # 根据用户的选择截取前 N 名
-                top_vehicles_df = vehicle_summary.head(top_n)
-
-                # 渲染图表
-                fig_bar = px.bar(
-                    top_vehicles_df.sort_values('Distance (km)', ascending=True),  # Plotly水平图表需升序
-                    x='Distance (km)', y='Vehicle', color='Company_Type',
-                    color_discrete_map=COLOR_MAP, orientation='h', text_auto='.1f',
-                    height=max(300, len(top_vehicles_df) * 30)  # 高度根据选定的 N 动态适应，拒绝无限拉长
-                )
-                fig_bar.update_layout(
-                    margin=dict(t=10, b=10, l=10, r=10),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    xaxis=dict(showgrid=True, gridcolor='#f1f5f9')
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                    fig_bar.update_layout(
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        xaxis=dict(showgrid=True, gridcolor='#f1f5f9')
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True)
 
         # ==========================================
         # 📋 第三排：专业级数据明细表
@@ -243,8 +272,6 @@ def render():
                     "Vehicle": st.column_config.TextColumn("车牌号", width="medium"),
                     "Company_Type": st.column_config.TextColumn("车辆归属"),
                     "Vehicle_Type": st.column_config.TextColumn("车型"),
-
-                    # 【修改点】：去掉了进度条，恢复为纯数字，保留1位小数
                     "Distance (km)": st.column_config.NumberColumn(
                         "行驶里程 (km)",
                         format="%.1f"
