@@ -8,7 +8,6 @@ warnings.filterwarnings('ignore')
 
 # 保证数据库文件及表结构初始化
 init_db()
-
 # 全局页面配置
 
 # 隐藏 Streamlit 默认的右上角菜单、顶部区域、页脚以及云端强制水印
