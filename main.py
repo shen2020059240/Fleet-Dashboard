@@ -17,9 +17,10 @@ hide_streamlit_style = """
     #MainMenu {visibility: hidden;} /* 隐藏右上角汉堡菜单 */
     header {visibility: hidden;} /* 隐藏顶部的 Fork/GitHub 区域 */
     footer {visibility: hidden;} /* 隐藏底部的 Streamlit 水印 */
-    /* 强杀 Streamlit Cloud 底部悬浮标签 */
+    /* 彻底隐藏 Streamlit Cloud 强制注入的悬浮徽章（包含头像和红条） */
+    iframe[title="Streamlit cloud badge"] {display: none !important;}
+    #st-app-badge {display: none !important;}
     .viewerBadge_container {display: none !important;}
-    .viewerBadge_link {display: none !important;}
     </style>
     """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
