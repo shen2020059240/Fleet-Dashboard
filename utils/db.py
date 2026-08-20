@@ -93,3 +93,57 @@ def load_from_db():
         traceback.print_exc()
         st.error(f"数据库读取异常: {str(e)}")
         return pd.DataFrame()
+
+
+def save_logistic_to_db(df):
+    """保存订单物流跟踪数据至 SQLite（全量覆盖模式）"""
+    if df.empty:
+        return False, "上传的物流数据为空"
+
+    try:
+        backup_db()  # 依然触发你的神仙自动备份机制，保障安全！
+        conn = sqlite3.connect(DB_FILE)
+
+        # 直接使用 replace 模式全量覆盖，保证云端数据和你的 Excel 母表永远完全一致
+        df.to_sql('logistic_records', conn, if_exists='replace', index=False)
+
+        conn.commit()
+        conn.close()
+
+        # 清除缓存，让前端马上刷新
+        if 'load_logistic_from_db' in globals():
+            load_logistic_from_db.clear()
+        return True, "物流节点数据覆盖写入成功"
+    except Exception as e:
+        traceback.print_exc()
+        return False, f"数据库写入异常: {str(e)}"
+
+
+@st.cache_data(ttl=300)
+def load_logistic_from_db():
+    """读取物流节点全量数据，并提供缓存"""
+    if not os.path.exists(DB_FILE):
+        return pd.DataFrame()
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        # 先检查一下这张新表建好了没有
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='logistic_records'")
+        if not cursor.fetchone():
+            conn.close()
+            return pd.DataFrame()
+
+        df = pd.read_sql("SELECT * FROM logistic_records", conn)
+        conn.close()
+
+        # 智能把包含 "DATE" 字眼的列全部转换为标准时间格式
+        for col in df.columns:
+            if 'DATE' in col.upper():
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+
+        return df
+    except Exception as e:
+        traceback.print_exc()
+        st.error(f"物流数据读取异常: {str(e)}")
+        return pd.DataFrame()

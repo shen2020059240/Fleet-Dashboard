@@ -1,6 +1,7 @@
 # views/upload.py
 import streamlit as st
-from utils.db import save_to_db, DB_FILE
+import pandas as pd
+from utils.db import save_to_db, save_logistic_to_db, DB_FILE
 from parsers import sk_parser, tm_parser
 import os
 
@@ -40,6 +41,31 @@ def render():
                         st.success(f"✅ 入库成功！新增/更新 {len(df_ot)} 条明细。")
                     else:
                         st.error(f"❌ {msg}")
+
+    # ==========================================
+    # 📦 新增的 通道 C (Function 2)
+    # ==========================================
+    with st.container(border=True):
+        st.markdown("<h3 style='color:#10b981;'>📦 通道 C: 订单物流状态更新 (Function 2)</h3>", unsafe_allow_html=True)
+        st.caption("适用: 通过 Power Query 提取出的脱敏模板 (Logistic_Upload_Template.xlsx)")
+        logistic_file = st.file_uploader("请上传脱敏物流节点报表 (.xlsx)", type=['xlsx'], key="up_log")
+
+        if logistic_file and st.button("🚀 验证并覆盖更新 (全量刷新)", use_container_width=True):
+            with st.spinner("正在读取并更新云端物流数据库..."):
+                try:
+                    # 直接读取用户上传的文件
+                    df_log = pd.read_excel(logistic_file)
+
+                    # 简单清洗：去除全空的行
+                    df_log = df_log.dropna(how='all')
+
+                    success, msg = save_logistic_to_db(df_log)
+                    if success:
+                        st.success(f"✅ 更新成功！当前数据库包含 {len(df_log)} 条物流追踪记录。")
+                    else:
+                        st.error(f"❌ {msg}")
+                except Exception as e:
+                    st.error(f"❌ 文件解析失败: {str(e)}")
 
     if os.path.exists(DB_FILE):
         st.divider()
