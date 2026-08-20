@@ -96,7 +96,7 @@ def render(business_line):
         st.markdown("---")
 
         # ==========================================
-        # 📈 全屏图表区 (动态单多车视图)
+        # 📈 全屏图表/表格区 (动态单多车视图)
         # ==========================================
         if current_cars == 1:
             # 【单车模式】
@@ -114,7 +114,6 @@ def render(business_line):
                     color_discrete_sequence=[primary_color], height=400
                 )
 
-                # 强制将X轴设为离散类别，并限制柱子最大宽度
                 fig_monthly.update_xaxes(type='category')
                 fig_monthly.update_traces(width=0.3)
 
@@ -126,70 +125,72 @@ def render(business_line):
                 st.plotly_chart(fig_monthly, use_container_width=True)
 
             with tab_daily:
-                # 智能判断：如果天数超过45天，自动隐藏柱子上的数字
-                is_dense = len(df_current) > 45
+                st.markdown(f"###### 📅 {single_v_name} 出勤账单 (按日期倒序)")
 
-                fig_daily = px.bar(
-                    df_current, x='Date', y='Distance (km)',
-                    color_discrete_sequence=[primary_color],
-                    text_auto=False if is_dense else '.0f',
-                    height=400
-                )
-
-                if not is_dense:
-                    fig_daily.update_traces(textposition="outside", cliponaxis=False)
-
-                fig_daily.update_layout(
-                    margin=dict(t=30, b=20, l=10, r=10),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis=dict(title="当日行驶里程 (km)", showgrid=True, gridcolor='#f1f5f9'),
-                    xaxis=dict(title="")
-                )
-                fig_daily.update_traces(hovertemplate="日期: %{x}<br>里程: %{y:.1f} km<extra></extra>")
-                st.plotly_chart(fig_daily, use_container_width=True)
-
-        else:
-            # 【多车/全盘模式】
-            tab_trend, tab_util, tab_rank = st.tabs(
-                ["📈 车队里程出勤趋势", "🔥 车辆出勤率 (闲置分析)", "🏆 车辆累计里程排行"])
-
-            with tab_trend:
-                trend_df = df_current.groupby('Date')['Distance (km)'].sum().reset_index()
-
-                # 智能判断：如果天数超过45天，自动隐藏柱子上的数字
-                is_dense = len(trend_df) > 45
-
-                fig_trend = px.bar(
-                    trend_df, x='Date', y='Distance (km)',
-                    color_discrete_sequence=[primary_color],
-                    text_auto=False if is_dense else '.0f',
-                    height=350
-                )
-
-                if not is_dense:
-                    fig_trend.update_traces(textposition="outside", cliponaxis=False)
-
-                fig_trend.update_layout(
-                    margin=dict(t=30, b=10, l=10, r=10),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis=dict(title="当日总里程 (km)", showgrid=True, gridcolor='#f1f5f9'),
-                    xaxis=dict(title="")
-                )
-                fig_trend.update_traces(hovertemplate="日期: %{x}<br>总里程: %{y:.1f} km<extra></extra>")
-                st.plotly_chart(fig_trend, use_container_width=True)
-
-                # 直观数据表格
-                st.markdown("###### 📅 每日里程汇总表 (按日期倒序)")
-                table_df = trend_df.sort_values('Date', ascending=False).copy()
+                # 仅筛选出大于0的有效出勤记录，并按日期从新到旧排列
+                table_df = df_current[['Date', 'Distance (km)']].sort_values('Date', ascending=False).copy()
+                table_df = table_df[table_df['Distance (km)'] > 0]
                 table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
 
                 st.dataframe(
                     table_df,
                     use_container_width=True,
                     hide_index=True,
+                    height=450,
+                    column_config={
+                        "Date": st.column_config.TextColumn("出勤日期"),
+                        "Distance (km)": st.column_config.NumberColumn("当日行驶里程 (km)", format="%.1f")
+                    }
+                )
+
+        else:
+            # 【多车/全盘模式】
+            tab_trend, tab_util, tab_rank = st.tabs(
+                ["📈 车队每日运营账单", "🔥 车辆出勤率 (闲置分析)", "🏆 车辆累计里程排行"])
+
+            with tab_trend:
+                st.markdown("###### 📅 每日车队运营账单 (按日期倒序)")
+
+                # 核心数据聚合
+                agg_funcs = {
+                    'Vehicle': 'nunique',
+                    'Distance (km)': ['sum', 'max']
+                }
+                daily_summary = df_current.groupby('Date').agg(agg_funcs).reset_index()
+                daily_summary.columns = ['Date', 'Active_Vehicles', 'Total_Distance', 'Max_Distance']
+
+                # 衍生计算
+                daily_summary['Avg_Distance'] = daily_summary['Total_Distance'] / daily_summary['Active_Vehicles']
+
+                # 格式化日期并倒序排列
+                daily_summary['Date'] = daily_summary['Date'].dt.strftime('%Y-%m-%d')
+                daily_summary = daily_summary.sort_values('Date', ascending=False)
+
+                st.dataframe(
+                    daily_summary,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=450,
                     column_config={
                         "Date": st.column_config.TextColumn("运营日期"),
-                        "Distance (km)": st.column_config.NumberColumn("当日总行驶里程 (km)", format="%.1f")
+                        "Active_Vehicles": st.column_config.NumberColumn(
+                            "出勤车辆 (辆)",
+                            help="当日有行驶记录的独立车辆总数"
+                        ),
+                        "Total_Distance": st.column_config.NumberColumn(
+                            "总行驶里程 (km)",
+                            format="%.1f"
+                        ),
+                        "Avg_Distance": st.column_config.NumberColumn(
+                            "单车平均里程 (km)",
+                            format="%.1f",
+                            help="总里程 ÷ 出勤车辆"
+                        ),
+                        "Max_Distance": st.column_config.NumberColumn(
+                            "最高单车里程 (km)",
+                            format="%.1f",
+                            help="当日行驶距离最远的那台车的里程数"
+                        )
                     }
                 )
 
@@ -206,7 +207,6 @@ def render(business_line):
                     value_name='车辆数'
                 )
 
-                # 健康色调：干活的是主题色，闲置的是浅灰
                 fig_util = px.area(
                     util_melted, x='Date', y='车辆数', color='状态',
                     color_discrete_map={'出勤车辆': '#10b981', '闲置空车': '#e2e8f0'},
