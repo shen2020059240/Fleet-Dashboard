@@ -37,12 +37,17 @@ def render(business_line):
         with c1:
             date_preset = st.selectbox(
                 "⏱️ 快捷时间",
-                options=["近30天", "本周", "本月", "今年至今", "自定义范围"],
-                index=0
+                # 在选项里加上"近两周"
+                options=["近两周", "近30天", "本周", "本月", "今年至今", "自定义范围"],
+                index=0  # 默认选中第一个（即近两周）
             )
 
             start_date, end_date = global_min_date, global_max_date
-            if date_preset == "本周":
+
+            # 增加“近两周”的日期计算逻辑 (向前推 14 天)
+            if date_preset == "近两周":
+                start_date = end_date - timedelta(days=14)
+            elif date_preset == "本周":
                 start_date = end_date - timedelta(days=end_date.weekday())
             elif date_preset == "本月":
                 start_date = end_date.replace(day=1)
