@@ -84,19 +84,20 @@ def render(business_line):
             st.warning("⚠️ 在当前筛选条件下没有数据。")
             return
 
-        # 核心 KPI 计算
+        # ==========================================
+        # 📈 核心 KPI 卡片区
+        # ==========================================
         current_km = df_current['Distance (km)'].sum()
         current_cars = df_current['Vehicle'].nunique()
-        avg_km_per_car = current_km / current_cars if current_cars > 0 else 0
 
-        col1, col2, col3 = st.columns(3)
+        # 改为两列布局，彻底去掉“单车平均里程”
+        col1, col2 = st.columns(2)
         col1.metric("🛣️ 周期内总行驶里程", f"{current_km:,.1f} km")
         col2.metric("🚛 产生数据的活跃车辆", f"{current_cars} 辆")
-        col3.metric("🎯 单车平均里程", f"{avg_km_per_car:,.1f} km")
         st.markdown("---")
 
         # ==========================================
-        # 📈 全屏图表/表格区 (动态单多车视图)
+        # 📊 全屏图表/表格区 (动态单多车视图)
         # ==========================================
         if current_cars == 1:
             # 【单车模式】
@@ -150,7 +151,7 @@ def render(business_line):
             with tab_trend:
                 st.markdown("###### 📅 每日车队运营账单 (按日期倒序)")
 
-                # 核心数据聚合：移除平均里程，仅保留车辆数、总里程、最高单车里程
+                # 核心数据聚合：只保留车辆数、总里程、最高单车里程
                 agg_funcs = {
                     'Vehicle': 'nunique',
                     'Distance (km)': ['sum', 'max']
