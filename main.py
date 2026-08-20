@@ -9,6 +9,7 @@ warnings.filterwarnings('ignore')
 # 保证数据库文件及表结构初始化
 init_db()
 # 全局页面配置
+st.set_page_config(page_title="集团车队系统", page_icon="🚚", layout="wide")
 
 # 隐藏 Streamlit 默认的右上角菜单、顶部区域、页脚以及云端强制水印
 hide_streamlit_style = """
