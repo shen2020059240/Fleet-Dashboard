@@ -29,10 +29,10 @@ def render(business_line):
     global_max_date = df['Date'].max().date()
 
     # ==========================================
-    # 🔍 筛选器区域 (剔除了业务线筛选，释放空间)
+    # 🔍 筛选器区域
     # ==========================================
     with st.container(border=True):
-        c1, c2, c3 = st.columns([1.5, 2, 2])  # 去掉了一个列，让时间选择更宽敞
+        c1, c2, c3 = st.columns([1.5, 2, 2])
 
         with c1:
             date_preset = st.selectbox(
@@ -114,37 +114,38 @@ def render(business_line):
                     color_discrete_sequence=[primary_color], height=400
                 )
 
-                # 【核心修复1】：强制将X轴设为“离散的类别”，去掉底层连续的周/日刻度
+                # 强制将X轴设为离散类别，并限制柱子最大宽度
                 fig_monthly.update_xaxes(type='category')
-
-                # 【核心修复2】：限制柱子的最大宽度（比如 0.3），防止只有 1-2 个月时柱子胖得像一面墙
                 fig_monthly.update_traces(width=0.3)
 
                 fig_monthly.update_layout(
                     margin=dict(t=20, b=20, l=10, r=10),
                     plot_bgcolor='rgba(0,0,0,0)',
-                    yaxis=dict(title="月度总里程 (km)")  # 顺手补上Y轴标题
+                    yaxis=dict(title="月度总里程 (km)")
                 )
                 st.plotly_chart(fig_monthly, use_container_width=True)
 
             with tab_daily:
-                # 升级为柱状图：有出勤才有柱子，没出勤直接留白，最真实反映车辆动态
+                # 智能判断：如果天数超过45天，自动隐藏柱子上的数字
+                is_dense = len(df_current) > 45
+
                 fig_daily = px.bar(
                     df_current, x='Date', y='Distance (km)',
                     color_discrete_sequence=[primary_color],
-                    text_auto='.0f',  # 直接在柱子顶部显示公里数
+                    text_auto=False if is_dense else '.0f',
                     height=400
                 )
 
-                # 优化数字显示位置，避免被裁切
-                fig_daily.update_traces(textposition="outside", cliponaxis=False)
+                if not is_dense:
+                    fig_daily.update_traces(textposition="outside", cliponaxis=False)
 
                 fig_daily.update_layout(
                     margin=dict(t=30, b=20, l=10, r=10),
                     plot_bgcolor='rgba(0,0,0,0)',
                     yaxis=dict(title="当日行驶里程 (km)", showgrid=True, gridcolor='#f1f5f9'),
-                    xaxis=dict(title="")  # 隐藏底部的 Date 字样，让画面更干净
+                    xaxis=dict(title="")
                 )
+                fig_daily.update_traces(hovertemplate="日期: %{x}<br>里程: %{y:.1f} km<extra></extra>")
                 st.plotly_chart(fig_daily, use_container_width=True)
 
         else:
@@ -153,30 +154,32 @@ def render(business_line):
                 ["📈 车队里程出勤趋势", "🔥 车辆出勤率 (闲置分析)", "🏆 车辆累计里程排行"])
 
             with tab_trend:
-                # 重新按天汇总总里程
                 trend_df = df_current.groupby('Date')['Distance (km)'].sum().reset_index()
 
-                # 1. 升级为清爽的柱状图，直接把数字“贴”在柱子上
+                # 智能判断：如果天数超过45天，自动隐藏柱子上的数字
+                is_dense = len(trend_df) > 45
+
                 fig_trend = px.bar(
                     trend_df, x='Date', y='Distance (km)',
                     color_discrete_sequence=[primary_color],
-                    text_auto='.0f',  # 直接显示具体公里数（去小数取整，避免画面杂乱）
+                    text_auto=False if is_dense else '.0f',
                     height=350
                 )
-                # 优化数字显示位置和网格线
-                fig_trend.update_traces(textposition="outside", cliponaxis=False)
+
+                if not is_dense:
+                    fig_trend.update_traces(textposition="outside", cliponaxis=False)
+
                 fig_trend.update_layout(
                     margin=dict(t=30, b=10, l=10, r=10),
                     plot_bgcolor='rgba(0,0,0,0)',
                     yaxis=dict(title="当日总里程 (km)", showgrid=True, gridcolor='#f1f5f9'),
                     xaxis=dict(title="")
                 )
+                fig_trend.update_traces(hovertemplate="日期: %{x}<br>总里程: %{y:.1f} km<extra></extra>")
                 st.plotly_chart(fig_trend, use_container_width=True)
 
-                # 2. 增加你需要的“直观数据表格”
+                # 直观数据表格
                 st.markdown("###### 📅 每日里程汇总表 (按日期倒序)")
-
-                # 格式化表格数据，方便阅读
                 table_df = trend_df.sort_values('Date', ascending=False).copy()
                 table_df['Date'] = table_df['Date'].dt.strftime('%Y-%m-%d')
 
@@ -191,7 +194,6 @@ def render(business_line):
                 )
 
             with tab_util:
-                # 最新的高级堆叠面积图
                 daily_usage = df_current.groupby('Date')['Vehicle'].nunique().reset_index(name='出勤车辆')
                 daily_usage['总车辆数'] = current_cars
                 daily_usage['闲置空车'] = current_cars - daily_usage['出勤车辆']
@@ -223,7 +225,6 @@ def render(business_line):
                 st.plotly_chart(fig_util, use_container_width=True)
 
             with tab_rank:
-                # 去掉按车型区分颜色，统一使用主题色
                 vehicle_summary = df_current.groupby('Vehicle')['Distance (km)'].sum().reset_index()
                 vehicle_summary = vehicle_summary.sort_values('Distance (km)', ascending=False)
                 total_cars_in_summary = len(vehicle_summary)
