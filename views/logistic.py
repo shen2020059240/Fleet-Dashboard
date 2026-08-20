@@ -23,10 +23,15 @@ def render():
 
     with st.spinner("正在执行云端智能匹配与里程计算..."):
         # 1. 🌟 智能提取列名 (识别时间节点与其他信息)
-        date_cols = [col for col in df_log.columns if 'DATE' in col.upper()]
+        # 将带有 ORDER 的列排除，确保 date_cols 纯粹是物流 7 大节点
+        date_cols = [col for col in df_log.columns if 'DATE' in col.upper() and 'ORDER' not in col.upper()]
+
+        # 单独拎出 Order date 列（如果以后表格没这列了，代码也不会报错）
+        order_date_col = next((col for col in df_log.columns if 'ORDER' in col.upper() and 'DATE' in col.upper()), None)
+
         other_cols = [col for col in df_log.columns if col not in date_cols and col not in ['行驶距离', '距离/状态']]
 
-        # 🌟 智能定位车牌列 (防止 Reference No 排在第一列导致错位)
+        # 🌟 智能定位车牌列 (防止 Reference No 等列排在第一列导致错位)
         truck_col = other_cols[0]  # 默认备用项
         for col in other_cols:
             if any(keyword in col.upper() for keyword in ['HORSE', 'TRUCK', 'VEHICLE', '车牌']):
@@ -34,11 +39,16 @@ def render():
                 break
 
         # 2. 🌟 终极模糊匹配：只提取数字进行对比！
-        # 将主数据库里的车牌号所有非数字字符(\D+)全部删掉，只保留数字（例如 "ADF 3230ZM" -> "3230"）
         df_fleet['Vehicle_Digits'] = df_fleet['Vehicle'].astype(str).str.replace(r'\D+', '', regex=True)
 
         # 3. 核心计算逻辑
         def process_logistic_row(row):
+            # 🌟 新增的“一票否决”逻辑：如果是 2025-10-01 之前的订单，直接不适用
+            if order_date_col and pd.notna(row[order_date_col]):
+                order_date = pd.to_datetime(row[order_date_col], errors='coerce')
+                if pd.notna(order_date) and order_date < pd.Timestamp('2025-10-01'):
+                    return pd.Series(["不适用", "不适用"])
+
             # 获取当前行的车牌，并用正则提纯出纯数字
             truck_raw = str(row[truck_col])
             truck_digits = re.sub(r'\D+', '', truck_raw)
@@ -68,7 +78,7 @@ def render():
             elif pd.notna(dates.iloc[0]):
                 status = "到装货地点"
 
-            # 🌟 使用纯数字进行终极对比
+            # 使用纯数字进行终极对比
             if not truck_digits:
                 return pd.Series(["车牌无法识别数字", "车牌无法识别数字"])
 
@@ -93,11 +103,16 @@ def render():
         # ==========================================
         st.success(f"✅ 计算完成！共处理 {len(df_log)} 条在途订单。")
 
-        # 将日期格式化为易读的字符串
+        # 将物流节点日期格式化为易读的字符串
         for col in date_cols:
-            df_log[col] = df_log[col].dt.strftime('%Y-%m-%d').fillna('')
+            df_log[col] = pd.to_datetime(df_log[col], errors='coerce').dt.strftime('%Y-%m-%d').fillna('')
 
-        # 动态重组表格展示顺序：所有其他列(含Reference No, 车牌) + 计算结果 + 日期节点
+        # 如果有 Order date，也把它格式化一下，避免带有时分秒
+        if order_date_col:
+            df_log[order_date_col] = pd.to_datetime(df_log[order_date_col], errors='coerce').dt.strftime(
+                '%Y-%m-%d').fillna('')
+
+        # 动态重组表格展示顺序：所有其他列(含Reference No, 车牌, Order Date) + 计算结果 + 日期节点
         final_cols = other_cols + ['行驶距离', '距离/状态'] + date_cols
         df_display = df_log[final_cols]
 
