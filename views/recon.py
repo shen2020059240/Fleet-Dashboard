@@ -130,6 +130,9 @@ def render():
             df_tfd.columns = df_tfd.columns.str.replace('\n', ' ').str.strip()
             df_tfm.columns = df_tfm.columns.str.replace('\n', ' ').str.strip()
 
+            # ================= 🌟 核心修复：锚定 TFD 原表顺序 =================
+            df_tfd['TFD_原表序号'] = range(len(df_tfd))
+
             # 日期清洗 YYYY-MM
             if '销售期间' in df_tfd.columns:
                 df_tfd['销售期间'] = pd.to_datetime(df_tfd['销售期间'], errors='coerce').dt.strftime('%Y-%m')
@@ -150,6 +153,10 @@ def render():
 
             # 联表
             merged_df = pd.merge(df_tfd, df_tfm, on=join_keys, how='outer', suffixes=('_TFD', '_TFM'))
+
+            # ================= 🌟 核心修复：强制恢复顺序 =================
+            merged_df = merged_df.sort_values(by='TFD_原表序号', na_position='last')
+            merged_df = merged_df.drop(columns=['TFD_原表序号']).reset_index(drop=True)
 
             def check_status(row):
                 if pd.isna(row.get('Subcontractor')):
@@ -220,15 +227,11 @@ def render():
 
             diff_df = pd.DataFrame(diff_records)
 
-            # 导出列重组
+            # 导出列重组 (取消了这里错误的 sort_values 排序逻辑，保留源头 TFD 顺序)
             cols_to_export = ['对账状态', '到达日期差异', 'Reference number', 'HORSE NO', '销售期间',
                               'Date Arrived_TFD', 'Date Arrived_TFM']
             cols_to_export += [c for c in merged_df.columns if c not in cols_to_export]
-            final_export_df = merged_df[cols_to_export].sort_values(
-                by=['Reference number', 'HORSE NO', '销售期间'],
-                ascending=[True, True, True],
-                na_position='last'
-            )
+            final_export_df = merged_df[cols_to_export]
 
             # 渲染共享面板 (实时上传模式)
             display_shared_dashboard(merged_df, diff_df, final_export_df, is_from_cloud=False)
@@ -248,4 +251,4 @@ def render():
 
         except Exception:
             # 如果数据库还是空的（还没人上传过）
-            st.info("👆 系统当前没有缓存任何对账数据，请上传表格以开启对账。")
+            st.info("👆 系统当前没有缓存任何对账数据，请首位用户上传对账表格以开启协作。")
