@@ -7,6 +7,7 @@ import sqlite3
 # 初始化共享数据库连接 (Streamlit 会在运行目录下自动生成这个 db 文件)
 conn = sqlite3.connect('shared_recon_center.db', check_same_thread=False)
 
+
 def render():
     st.title("⚖️ TFD & TFM 内部往来对账中心")
     st.markdown("💡 **智能对账引擎**：上传对账表并一键发布，全团队均可在线查看与下载最新结果。")
@@ -100,22 +101,25 @@ def render():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ================= 🌟 核心修复：Streamlit 格式化去除了报错的逗号 =================
-        def get_column_config(df):
-            config = {}
+        # ================= 🌟 终极修复：启用 Pandas Styler 实现完美千分位 =================
+        def get_styled_df(df):
+            format_dict = {}
             for col in df.columns:
+                # 凡是带有这些关键字的数字列，全部应用 {:,.2f} (千分位 + 两位小数) 的格式
                 if any(k in col.upper() for k in
                        ['USD', 'TOTAL', 'PRICE', 'REVENUE', 'COST', 'ADJ', 'QUANTITY', 'QTY']):
                     if pd.api.types.is_numeric_dtype(df[col]):
-                        # 改为了 "%.2f"，保留两位小数，消灭红三角报错
-                        config[col] = st.column_config.NumberColumn(format="%.2f")
-            return config
+                        format_dict[col] = "{:,.2f}"
+
+            # 使用 Pandas 原生的 style 引擎进行渲染，na_rep="" 表示空值显示为空白而不是 nan
+            return df.style.format(format_dict, na_rep="")
 
         # --- 明细 Tab 展示 ---
         tab1, tab2, tab3 = st.tabs(["🔍 TFM 数据差异明细 (核心)", "⚠️ 单边账明细", "📊 完整全景表"])
         with tab1:
             if not diff_df.empty:
-                st.dataframe(diff_df, column_config=get_column_config(diff_df), use_container_width=True)
+                # 直接将 Styler 对象传给 Streamlit
+                st.dataframe(get_styled_df(diff_df), use_container_width=True)
             else:
                 st.success("🎉 太棒了！所有匹配上的单据数据完全一致！")
 
@@ -124,7 +128,8 @@ def render():
             st.dataframe(error_df[['对账状态', 'Reference number', 'HORSE NO', '销售期间']], use_container_width=True)
 
         with tab3:
-            st.dataframe(final_export_df, column_config=get_column_config(final_export_df), use_container_width=True)
+            # 同样应用 Styler 进行全景表的千分位渲染
+            st.dataframe(get_styled_df(final_export_df), use_container_width=True)
 
     # ================= 2. 主页面逻辑 (上传 or 读取) =================
     uploaded_file = st.file_uploader("📥 第一步：请上传最新对账 Excel 文件 (将覆盖云端历史数据)", type=['xlsx'])
