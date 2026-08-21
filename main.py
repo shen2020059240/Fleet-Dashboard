@@ -1,7 +1,7 @@
 # main.py 完整更新代码
 import streamlit as st
 from utils.db import init_db
-from views import dashboard, upload, logistic  # 👈 新增导入了 logistic
+from views import dashboard, upload, logistic, recon
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -26,18 +26,24 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # ================= 修改后的导航路由 =================
 st.sidebar.title("🛠️ 导航")
+
+# 这里只保留一个合并后的菜单列表即可
 page = st.sidebar.radio("请选择服务", [
     "🚛 Flatbed 运营看板",
     "🛢️ Oil Tanker 运营看板",
-    "🚚 TFM Flatbed 物流跟踪",  # 👈 新增的导航按钮
+    "🚚 TFM Flatbed 物流跟踪",
+    "⚖️ TFD & TFM 业财对账",
     "⚙️ 数据中心 (可用)"
 ])
 
+# 页面路由逻辑
 if page == "🚛 Flatbed 运营看板":
     dashboard.render(business_line="Flatbed")
 elif page == "🛢️ Oil Tanker 运营看板":
     dashboard.render(business_line="Oil Tanker")
-elif page == "🚚 TFM Flatbed 物流跟踪":      # 👈 当选中该按钮时
-    logistic.render()                        # 👈 渲染物流跟踪页面
+elif page == "🚚 TFM Flatbed 物流跟踪":
+    logistic.render()
+elif page == "⚖️ TFD & TFM 业财对账":
+    recon.render()
 elif page == "⚙️ 数据中心 (可用)":
     upload.render()
