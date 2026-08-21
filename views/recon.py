@@ -19,13 +19,25 @@ def render():
         else:
             st.success("✅ 数据联表与深度校验完成！")
 
+        # ================= 🌟 核心修复：强制数字类型转换 =================
+        # 这一步将彻底消灭表格右上角的“红三角”，让千分位格式化能够顺利生效！
+        def force_numeric(df):
+            for col in df.columns:
+                if any(k in col.upper() for k in
+                       ['USD', 'TOTAL', 'PRICE', 'REVENUE', 'COST', 'ADJ', 'QUANTITY', 'QTY']):
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            return df
+
+        merged_df = force_numeric(merged_df)
+        diff_df = force_numeric(diff_df)
+        final_export_df = force_numeric(final_export_df)
+
         # --- 财务大盘数据提取与安全计算 ---
         rev_col = 'NET REVNEUE (USD)'
         cogs_col = 'Subcon Total'
 
-        # 强制转为数字，防止带空格的字符干扰计算
-        total_revenue = pd.to_numeric(merged_df[rev_col], errors='coerce').sum() if rev_col in merged_df.columns else 0
-        total_cogs = pd.to_numeric(merged_df[cogs_col], errors='coerce').sum() if cogs_col in merged_df.columns else 0
+        total_revenue = merged_df[rev_col].sum() if rev_col in merged_df.columns else 0
+        total_cogs = merged_df[cogs_col].sum() if cogs_col in merged_df.columns else 0
         total_margin = total_revenue - total_cogs
 
         st.markdown("### 📊 业财大盘总览 (Financial Overview)")
@@ -60,7 +72,6 @@ def render():
                     if df.iloc[row_num, diff_col_idx] == "异常":
                         worksheet.set_row(row_num + 1, None, red_format)
 
-            # 给 Excel 里的金额列加上千分位
             for col_idx, col_name in enumerate(df.columns):
                 if any(k in col_name.upper() for k in ['USD', 'TOTAL', 'PRICE', 'REVENUE', 'COST', 'ADJ']):
                     worksheet.set_column(col_idx, col_idx, 12, money_format)
@@ -80,12 +91,10 @@ def render():
                 type="primary"
             )
 
-        # 🌟 云端发布按钮 (仅在非云端模式下显示)
         if not is_from_cloud:
             with col_btn2:
                 if st.button("🚀 发布本次结果到云端 (共享给同事)"):
                     with st.spinner("正在写入云端数据库..."):
-                        # 确保存入数据库前强制转为字符串防报错，部分纯数字列保持 numeric
                         merged_df.to_sql("shared_merged", conn, if_exists="replace", index=False)
                         diff_df.to_sql("shared_diff", conn, if_exists="replace", index=False)
                         final_export_df.to_sql("shared_export", conn, if_exists="replace", index=False)
@@ -93,11 +102,10 @@ def render():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- 智能千分位配置器 (专门用于 Streamlit 网页展示) ---
+        # --- 智能千分位配置器 ---
         def get_column_config(df):
             config = {}
             for col in df.columns:
-                # 只要列名包含这些关键字，且数据类型是数字，就自动格式化为千分位
                 if any(k in col.upper() for k in
                        ['USD', 'TOTAL', 'PRICE', 'REVENUE', 'COST', 'ADJ', 'QUANTITY', 'QTY']):
                     if pd.api.types.is_numeric_dtype(df[col]):
@@ -124,22 +132,18 @@ def render():
 
     if uploaded_file is not None:
         try:
-            # 读取并清洗
             df_tfd = pd.read_excel(uploaded_file, sheet_name='TFD')
             df_tfm = pd.read_excel(uploaded_file, sheet_name='TFM')
             df_tfd.columns = df_tfd.columns.str.replace('\n', ' ').str.strip()
             df_tfm.columns = df_tfm.columns.str.replace('\n', ' ').str.strip()
 
-            # ================= 🌟 核心修复：锚定 TFD 原表顺序 =================
             df_tfd['TFD_原表序号'] = range(len(df_tfd))
 
-            # 日期清洗 YYYY-MM
             if '销售期间' in df_tfd.columns:
                 df_tfd['销售期间'] = pd.to_datetime(df_tfd['销售期间'], errors='coerce').dt.strftime('%Y-%m')
             if '销售期间' in df_tfm.columns:
                 df_tfm['销售期间'] = pd.to_datetime(df_tfm['销售期间'], errors='coerce').dt.strftime('%Y-%m')
 
-            # 日期清洗 YYYY-MM-DD
             if 'Date Arrived' in df_tfd.columns:
                 df_tfd['Date Arrived'] = pd.to_datetime(df_tfd['Date Arrived'], errors='coerce').dt.strftime('%Y-%m-%d')
             if 'Date Arrived' in df_tfm.columns:
@@ -151,10 +155,7 @@ def render():
                 st.error(f"❌ 严重错误：两张表中缺少核心联表键 {missing_keys}")
                 return
 
-            # 联表
             merged_df = pd.merge(df_tfd, df_tfm, on=join_keys, how='outer', suffixes=('_TFD', '_TFM'))
-
-            # ================= 🌟 核心修复：强制恢复顺序 =================
             merged_df = merged_df.sort_values(by='TFD_原表序号', na_position='last')
             merged_df = merged_df.drop(columns=['TFD_原表序号']).reset_index(drop=True)
 
@@ -227,28 +228,23 @@ def render():
 
             diff_df = pd.DataFrame(diff_records)
 
-            # 导出列重组 (取消了这里错误的 sort_values 排序逻辑，保留源头 TFD 顺序)
             cols_to_export = ['对账状态', '到达日期差异', 'Reference number', 'HORSE NO', '销售期间',
                               'Date Arrived_TFD', 'Date Arrived_TFM']
             cols_to_export += [c for c in merged_df.columns if c not in cols_to_export]
             final_export_df = merged_df[cols_to_export]
 
-            # 渲染共享面板 (实时上传模式)
             display_shared_dashboard(merged_df, diff_df, final_export_df, is_from_cloud=False)
 
         except Exception as e:
             st.error(f"❌ 系统发生严重错误：{e}")
 
     else:
-        # 如果没有上传文件，尝试从云端数据库读取同事发布的最新数据
         try:
             db_merged_df = pd.read_sql("SELECT * FROM shared_merged", conn)
             db_diff_df = pd.read_sql("SELECT * FROM shared_diff", conn)
             db_final_export_df = pd.read_sql("SELECT * FROM shared_export", conn)
 
-            # 渲染共享面板 (云端读取模式)
             display_shared_dashboard(db_merged_df, db_diff_df, db_final_export_df, is_from_cloud=True)
 
         except Exception:
-            # 如果数据库还是空的（还没人上传过）
             st.info("👆 系统当前没有缓存任何对账数据，请首位用户上传对账表格以开启协作。")
