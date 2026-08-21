@@ -224,7 +224,11 @@ def render():
             cols_to_export = ['对账状态', '到达日期差异', 'Reference number', 'HORSE NO', '销售期间',
                               'Date Arrived_TFD', 'Date Arrived_TFM']
             cols_to_export += [c for c in merged_df.columns if c not in cols_to_export]
-            final_export_df = merged_df[cols_to_export]
+            final_export_df = merged_df[cols_to_export].sort_values(
+                by=['Reference number', 'HORSE NO', '销售期间'],
+                ascending=[True, True, True],
+                na_position='last'
+            )
 
             # 渲染共享面板 (实时上传模式)
             display_shared_dashboard(merged_df, diff_df, final_export_df, is_from_cloud=False)
