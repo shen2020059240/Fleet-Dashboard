@@ -14,13 +14,23 @@ def render():
             df_tfd = pd.read_excel(uploaded_file, sheet_name='TFD')
             df_tfm = pd.read_excel(uploaded_file, sheet_name='TFM')
 
-            # 2. 设定“三把钥匙” (请确保这里的列名与你 Power Query 里的最终列名完全一致！)
-            # 假设你已经把第三把钥匙改成了 'Date Arrived'
-            join_keys = ['Reference number', 'HORSE NO', 'Date Arrived']
+            # 2. 设定新的“三把钥匙”（使用 销售期间 代替 到达日期）
+            # 注意：请确保两张表里的列名都叫 '销售期间'
+            join_keys = ['Reference number', 'HORSE NO', '销售期间']
 
-            # 3. 智能联表 (Merge)：使用 outer join 找出所有匹配和不匹配的单子
-            # 为防止两边有相同的其他列名，加上 _TFD 和 _TFM 后缀
+            # 3. 智能联表 (Merge)
             merged_df = pd.merge(df_tfd, df_tfm, on=join_keys, how='outer', suffixes=('_TFD', '_TFM'))
+
+            # 3.5 新增数据质量校验 (Data Validation)
+            # 如果两边的 Date Arrived 列存在且不相等，标记出来
+            if 'Date Arrived_TFD' in merged_df.columns and 'Date Arrived_TFM' in merged_df.columns:
+                def check_date_match(row):
+                    if pd.notna(row['Date Arrived_TFD']) and pd.notna(row['Date Arrived_TFM']):
+                        if row['Date Arrived_TFD'] != row['Date Arrived_TFM']:
+                            return "⚠️ 到达日期不一致"
+                    return "✅ 数据一致"
+
+                merged_df['数据校验'] = merged_df.apply(check_date_match, axis=1)
 
             # 4. 业务逻辑计算 (如果匹配成功，计算 Margin)
             # 假设 TFM 的净收入列叫 'NET REVNEUE (USD)'，TFD 的成本叫 'Subcontract (Invoice amount) (USD)'
