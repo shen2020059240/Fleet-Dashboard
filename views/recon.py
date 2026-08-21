@@ -7,7 +7,6 @@ import sqlite3
 # 初始化共享数据库连接 (Streamlit 会在运行目录下自动生成这个 db 文件)
 conn = sqlite3.connect('shared_recon_center.db', check_same_thread=False)
 
-
 def render():
     st.title("⚖️ TFD & TFM 内部往来对账中心")
     st.markdown("💡 **智能对账引擎**：上传对账表并一键发布，全团队均可在线查看与下载最新结果。")
@@ -20,7 +19,6 @@ def render():
             st.success("✅ 数据联表与深度校验完成！")
 
         # ================= 🌟 核心修复：强制数字类型转换 =================
-        # 这一步将彻底消灭表格右上角的“红三角”，让千分位格式化能够顺利生效！
         def force_numeric(df):
             for col in df.columns:
                 if any(k in col.upper() for k in
@@ -102,14 +100,15 @@ def render():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- 智能千分位配置器 ---
+        # ================= 🌟 核心修复：Streamlit 格式化去除了报错的逗号 =================
         def get_column_config(df):
             config = {}
             for col in df.columns:
                 if any(k in col.upper() for k in
                        ['USD', 'TOTAL', 'PRICE', 'REVENUE', 'COST', 'ADJ', 'QUANTITY', 'QTY']):
                     if pd.api.types.is_numeric_dtype(df[col]):
-                        config[col] = st.column_config.NumberColumn(format="%,.2f")
+                        # 改为了 "%.2f"，保留两位小数，消灭红三角报错
+                        config[col] = st.column_config.NumberColumn(format="%.2f")
             return config
 
         # --- 明细 Tab 展示 ---
