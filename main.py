@@ -12,11 +12,10 @@ init_db()
 # 全局页面配置
 st.set_page_config(page_title="集团车队系统", page_icon="🚚", layout="wide")
 
-# 隐藏 Streamlit 默认的右上角菜单、顶部区域、页脚以及云端强制水印
+# 隐藏 Streamlit 默认的右上角菜单、页脚以及云端强制水印 (保留 header 以防止侧边栏无法展开)
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
     footer {visibility: hidden;}
     iframe[title="Streamlit cloud badge"] {display: none !important;}
     #st-app-badge {display: none !important;}
